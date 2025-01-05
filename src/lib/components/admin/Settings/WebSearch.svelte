@@ -25,6 +25,7 @@
 		'duckduckgo',
 		'tavily',
 		'jina',
+		'searchpro',
 		'bing'
 	];
 

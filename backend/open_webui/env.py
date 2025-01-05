@@ -20,9 +20,7 @@ print("OPEN_WEBUI_DIR:", OPEN_WEBUI_DIR)
 
 BACKEND_DIR = OPEN_WEBUI_DIR.parent  # the path containing this file
 BASE_DIR = BACKEND_DIR.parent  # the path containing the backend/
-
-print(BACKEND_DIR)
-print(BASE_DIR)
+print('BASE_DIR:', BASE_DIR)
 
 try:
     from dotenv import find_dotenv, load_dotenv
@@ -103,7 +101,7 @@ WEBUI_NAME = os.environ.get("WEBUI_NAME", "Open WebUI")
 if WEBUI_NAME != "Open WebUI":
     WEBUI_NAME += " (Open WebUI)"
 
-WEBUI_FAVICON_URL = "https://openwebui.com/favicon.png"
+WEBUI_FAVICON_URL = "https://www.mulanai.com/chatpilot_favicon.png"
 
 
 ####################################
@@ -262,6 +260,8 @@ else:
     pass
 
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR}/webui.db")
+print(f"DATA_DIR:", DATA_DIR)
+print(f"DATABASE_URL: {DATABASE_URL}")
 
 # Replace the postgres:// with postgresql://
 if "postgres://" in DATABASE_URL:

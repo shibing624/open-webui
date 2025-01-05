@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 
 import chromadb
 import requests
-import yaml
 from open_webui.internal.db import Base, get_db
 from open_webui.env import (
     OPEN_WEBUI_DIR,
@@ -1293,7 +1292,7 @@ ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION = PersistentConfig(
 RAG_EMBEDDING_ENGINE = PersistentConfig(
     "RAG_EMBEDDING_ENGINE",
     "rag.embedding_engine",
-    os.environ.get("RAG_EMBEDDING_ENGINE", ""),
+    os.environ.get("RAG_EMBEDDING_ENGINE", "openai"),
 )
 
 PDF_EXTRACT_IMAGES = PersistentConfig(
@@ -1305,13 +1304,13 @@ PDF_EXTRACT_IMAGES = PersistentConfig(
 RAG_EMBEDDING_MODEL = PersistentConfig(
     "RAG_EMBEDDING_MODEL",
     "rag.embedding_model",
-    os.environ.get("RAG_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+    os.environ.get("RAG_EMBEDDING_MODEL", ""),
 )
 log.info(f"Embedding model set: {RAG_EMBEDDING_MODEL.value}")
 
 RAG_EMBEDDING_MODEL_AUTO_UPDATE = (
     not OFFLINE_MODE
-    and os.environ.get("RAG_EMBEDDING_MODEL_AUTO_UPDATE", "True").lower() == "true"
+    and os.environ.get("RAG_EMBEDDING_MODEL_AUTO_UPDATE", "False").lower() == "true"
 )
 
 RAG_EMBEDDING_MODEL_TRUST_REMOTE_CODE = (
@@ -1337,7 +1336,7 @@ if RAG_RERANKING_MODEL.value != "":
 
 RAG_RERANKING_MODEL_AUTO_UPDATE = (
     not OFFLINE_MODE
-    and os.environ.get("RAG_RERANKING_MODEL_AUTO_UPDATE", "True").lower() == "true"
+    and os.environ.get("RAG_RERANKING_MODEL_AUTO_UPDATE", "False").lower() == "true"
 )
 
 RAG_RERANKING_MODEL_TRUST_REMOTE_CODE = (
@@ -1821,7 +1820,7 @@ WHISPER_MODEL = PersistentConfig(
 WHISPER_MODEL_DIR = os.getenv("WHISPER_MODEL_DIR", f"{CACHE_DIR}/whisper/models")
 WHISPER_MODEL_AUTO_UPDATE = (
     not OFFLINE_MODE
-    and os.environ.get("WHISPER_MODEL_AUTO_UPDATE", "").lower() == "true"
+    and os.environ.get("WHISPER_MODEL_AUTO_UPDATE", "false").lower() == "true"
 )
 
 
