@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from sqlalchemy import text
 import aiohttp
 
-
 from fastapi import (
     Depends,
     FastAPI,
@@ -39,7 +38,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response, StreamingResponse
-
 
 from open_webui.socket.main import (
     app as socket_app,
@@ -276,7 +274,6 @@ from open_webui.env import (
     OFFLINE_MODE,
 )
 
-
 from open_webui.utils.models import (
     get_all_models,
     get_all_base_models,
@@ -355,7 +352,6 @@ app = FastAPI(
 
 app.state.config = AppConfig()
 
-
 ########################################
 #
 # OLLAMA
@@ -403,7 +399,6 @@ app.state.config.JWT_EXPIRES_IN = JWT_EXPIRES_IN
 app.state.config.SHOW_ADMIN_DETAILS = SHOW_ADMIN_DETAILS
 app.state.config.ADMIN_EMAIL = ADMIN_EMAIL
 
-
 app.state.config.DEFAULT_MODELS = DEFAULT_MODELS
 app.state.config.DEFAULT_PROMPT_SUGGESTIONS = DEFAULT_PROMPT_SUGGESTIONS
 app.state.config.DEFAULT_USER_ROLE = DEFAULT_USER_ROLE
@@ -412,7 +407,6 @@ app.state.config.USER_PERMISSIONS = USER_PERMISSIONS
 app.state.config.WEBHOOK_URL = WEBHOOK_URL
 app.state.config.BANNERS = WEBUI_BANNERS
 app.state.config.MODEL_ORDER_LIST = MODEL_ORDER_LIST
-
 
 app.state.config.ENABLE_CHANNELS = ENABLE_CHANNELS
 app.state.config.ENABLE_COMMUNITY_SHARING = ENABLE_COMMUNITY_SHARING
@@ -443,13 +437,11 @@ app.state.config.LDAP_USE_TLS = LDAP_USE_TLS
 app.state.config.LDAP_CA_CERT_FILE = LDAP_CA_CERT_FILE
 app.state.config.LDAP_CIPHERS = LDAP_CIPHERS
 
-
 app.state.AUTH_TRUSTED_EMAIL_HEADER = WEBUI_AUTH_TRUSTED_EMAIL_HEADER
 app.state.AUTH_TRUSTED_NAME_HEADER = WEBUI_AUTH_TRUSTED_NAME_HEADER
 
 app.state.TOOLS = {}
 app.state.FUNCTIONS = {}
-
 
 ########################################
 #
@@ -494,7 +486,6 @@ app.state.config.PDF_EXTRACT_IMAGES = PDF_EXTRACT_IMAGES
 app.state.config.YOUTUBE_LOADER_LANGUAGE = YOUTUBE_LOADER_LANGUAGE
 app.state.config.YOUTUBE_LOADER_PROXY_URL = YOUTUBE_LOADER_PROXY_URL
 
-
 app.state.config.ENABLE_RAG_WEB_SEARCH = ENABLE_RAG_WEB_SEARCH
 app.state.config.RAG_WEB_SEARCH_ENGINE = RAG_WEB_SEARCH_ENGINE
 app.state.config.RAG_WEB_SEARCH_DOMAIN_FILTER_LIST = RAG_WEB_SEARCH_DOMAIN_FILTER_LIST
@@ -527,7 +518,6 @@ app.state.rf = None
 
 app.state.YOUTUBE_LOADER_TRANSLATION = None
 
-
 try:
     app.state.ef = get_ef(
         app.state.config.RAG_EMBEDDING_ENGINE,
@@ -542,7 +532,6 @@ try:
 except Exception as e:
     log.error(f"Error updating models: {e}")
     pass
-
 
 app.state.EMBEDDING_FUNCTION = get_embedding_function(
     app.state.config.RAG_EMBEDDING_ENGINE,
@@ -560,7 +549,6 @@ app.state.EMBEDDING_FUNCTION = get_embedding_function(
     ),
     app.state.config.RAG_EMBEDDING_BATCH_SIZE,
 )
-
 
 ########################################
 #
@@ -589,7 +577,6 @@ app.state.config.COMFYUI_WORKFLOW_NODES = COMFYUI_WORKFLOW_NODES
 app.state.config.IMAGE_SIZE = IMAGE_SIZE
 app.state.config.IMAGE_STEPS = IMAGE_STEPS
 
-
 ########################################
 #
 # AUDIO
@@ -611,15 +598,12 @@ app.state.config.TTS_VOICE = AUDIO_TTS_VOICE
 app.state.config.TTS_API_KEY = AUDIO_TTS_API_KEY
 app.state.config.TTS_SPLIT_ON = AUDIO_TTS_SPLIT_ON
 
-
 app.state.config.TTS_AZURE_SPEECH_REGION = AUDIO_TTS_AZURE_SPEECH_REGION
 app.state.config.TTS_AZURE_SPEECH_OUTPUT_FORMAT = AUDIO_TTS_AZURE_SPEECH_OUTPUT_FORMAT
-
 
 app.state.faster_whisper_model = None
 app.state.speech_synthesiser = None
 app.state.speech_speaker_embeddings_dataset = None
-
 
 ########################################
 #
@@ -631,12 +615,10 @@ app.state.speech_speaker_embeddings_dataset = None
 app.state.config.TASK_MODEL = TASK_MODEL
 app.state.config.TASK_MODEL_EXTERNAL = TASK_MODEL_EXTERNAL
 
-
 app.state.config.ENABLE_SEARCH_QUERY_GENERATION = ENABLE_SEARCH_QUERY_GENERATION
 app.state.config.ENABLE_RETRIEVAL_QUERY_GENERATION = ENABLE_RETRIEVAL_QUERY_GENERATION
 app.state.config.ENABLE_AUTOCOMPLETE_GENERATION = ENABLE_AUTOCOMPLETE_GENERATION
 app.state.config.ENABLE_TAGS_GENERATION = ENABLE_TAGS_GENERATION
-
 
 app.state.config.TITLE_GENERATION_PROMPT_TEMPLATE = TITLE_GENERATION_PROMPT_TEMPLATE
 app.state.config.TAGS_GENERATION_PROMPT_TEMPLATE = TAGS_GENERATION_PROMPT_TEMPLATE
@@ -650,7 +632,6 @@ app.state.config.AUTOCOMPLETE_GENERATION_PROMPT_TEMPLATE = (
 app.state.config.AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH = (
     AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH
 )
-
 
 ########################################
 #
@@ -706,8 +687,8 @@ async def check_url(request: Request, call_next):
 @app.middleware("http")
 async def inspect_websocket(request: Request, call_next):
     if (
-        "/ws/socket.io" in request.url.path
-        and request.query_params.get("transport") == "websocket"
+            "/ws/socket.io" in request.url.path
+            and request.query_params.get("transport") == "websocket"
     ):
         upgrade = (request.headers.get("Upgrade") or "").lower()
         connection = (request.headers.get("Connection") or "").lower().split(",")
@@ -729,13 +710,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 app.mount("/ws", socket_app)
-
 
 app.include_router(ollama.router, prefix="/ollama", tags=["ollama"])
 app.include_router(openai.router, prefix="/openai", tags=["openai"])
-
 
 app.include_router(pipelines.router, prefix="/api/v1/pipelines", tags=["pipelines"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
@@ -747,7 +725,6 @@ app.include_router(configs.router, prefix="/api/v1/configs", tags=["configs"])
 
 app.include_router(auths.router, prefix="/api/v1/auths", tags=["auths"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
-
 
 app.include_router(channels.router, prefix="/api/v1/channels", tags=["channels"])
 app.include_router(chats.router, prefix="/api/v1/chats", tags=["chats"])
@@ -782,11 +759,11 @@ async def get_models(request: Request, user=Depends(get_verified_user)):
         for model in models:
             if model.get("arena"):
                 if has_access(
-                    user.id,
-                    type="read",
-                    access_control=model.get("info", {})
-                    .get("meta", {})
-                    .get("access_control", {}),
+                        user.id,
+                        type="read",
+                        access_control=model.get("info", {})
+                                .get("meta", {})
+                                .get("access_control", {}),
                 ):
                     filtered_models.append(model)
                 continue
@@ -794,7 +771,7 @@ async def get_models(request: Request, user=Depends(get_verified_user)):
             model_info = Models.get_model_by_id(model["id"])
             if model_info:
                 if user.id == model_info.user_id or has_access(
-                    user.id, type="read", access_control=model_info.access_control
+                        user.id, type="read", access_control=model_info.access_control
                 ):
                     filtered_models.append(model)
 
@@ -835,9 +812,9 @@ async def get_base_models(request: Request, user=Depends(get_admin_user)):
 
 @app.post("/api/chat/completions")
 async def chat_completion(
-    request: Request,
-    form_data: dict,
-    user=Depends(get_verified_user),
+        request: Request,
+        form_data: dict,
+        user=Depends(get_verified_user),
 ):
     if not request.app.state.MODELS:
         await get_all_models(request)
@@ -895,7 +872,7 @@ generate_chat_completion = chat_completion
 
 @app.post("/api/chat/completed")
 async def chat_completed(
-    request: Request, form_data: dict, user=Depends(get_verified_user)
+        request: Request, form_data: dict, user=Depends(get_verified_user)
 ):
     try:
         return await chat_completed_handler(request, form_data, user)
@@ -908,7 +885,7 @@ async def chat_completed(
 
 @app.post("/api/chat/actions/{action_id}")
 async def chat_action(
-    request: Request, action_id: str, form_data: dict, user=Depends(get_verified_user)
+        request: Request, action_id: str, form_data: dict, user=Depends(get_verified_user)
 ):
     try:
         return await chat_action_handler(request, action_id, form_data, user)
@@ -1053,25 +1030,7 @@ async def get_app_version():
 
 @app.get("/api/version/updates")
 async def get_app_latest_release_version():
-    if OFFLINE_MODE:
-        log.debug(
-            f"Offline mode is enabled, returning current version as latest version"
-        )
-        return {"current": VERSION, "latest": VERSION}
-    try:
-        timeout = aiohttp.ClientTimeout(total=1)
-        async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
-            async with session.get(
-                "https://api.github.com/repos/open-webui/open-webui/releases/latest"
-            ) as response:
-                response.raise_for_status()
-                data = await response.json()
-                latest_version = data["tag_name"]
-
-                return {"current": VERSION, "latest": latest_version[1:]}
-    except Exception as e:
-        log.debug(e)
-        return {"current": VERSION, "latest": VERSION}
+    return {"current": VERSION, "latest": VERSION}
 
 
 @app.get("/api/changelog")
