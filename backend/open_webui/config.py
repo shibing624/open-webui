@@ -715,7 +715,7 @@ try:
     ]
 except Exception:
     pass
-OPENAI_API_BASE_URL = "https://api.openai.com/v1"
+# OPENAI_API_BASE_URL = "https://api.openai.com/v1"
 
 ####################################
 # WEBUI
@@ -1542,6 +1542,12 @@ JINA_API_KEY = PersistentConfig(
     "JINA_API_KEY",
     "rag.web.search.jina_api_key",
     os.getenv("JINA_API_KEY", ""),
+)
+
+ZHIPUAI_API_KEY = PersistentConfig(
+    "ZHIPUAI_API_KEY",
+    "rag.web.search.zhipuai_api_key",
+    os.getenv("ZHIPUAI_API_KEY", ""),
 )
 
 SEARCHAPI_API_KEY = PersistentConfig(

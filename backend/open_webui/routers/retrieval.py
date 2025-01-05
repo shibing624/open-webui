@@ -55,6 +55,7 @@ from open_webui.retrieval.web.serply import search_serply
 from open_webui.retrieval.web.serpstack import search_serpstack
 from open_webui.retrieval.web.tavily import search_tavily
 from open_webui.retrieval.web.bing import search_bing
+from open_webui.retrieval.web.search_pro import search_pro
 
 
 from open_webui.retrieval.utils import (
@@ -386,6 +387,7 @@ async def get_rag_config(request: Request, user=Depends(get_admin_user)):
                 "searchapi_api_key": request.app.state.config.SEARCHAPI_API_KEY,
                 "seaarchapi_engine": request.app.state.config.SEARCHAPI_ENGINE,
                 "jina_api_key": request.app.state.config.JINA_API_KEY,
+                "zhipuai_api_key": request.app.state.config.ZHIPUAI_API_KEY,
                 "bing_search_v7_endpoint": request.app.state.config.BING_SEARCH_V7_ENDPOINT,
                 "bing_search_v7_subscription_key": request.app.state.config.BING_SEARCH_V7_SUBSCRIPTION_KEY,
                 "result_count": request.app.state.config.RAG_WEB_SEARCH_RESULT_COUNT,
@@ -434,6 +436,7 @@ class WebSearchConfig(BaseModel):
     searchapi_api_key: Optional[str] = None
     searchapi_engine: Optional[str] = None
     jina_api_key: Optional[str] = None
+    zhipuai_api_key: Optional[str] = None
     bing_search_v7_endpoint: Optional[str] = None
     bing_search_v7_subscription_key: Optional[str] = None
     result_count: Optional[int] = None
@@ -535,6 +538,7 @@ async def update_rag_config(
         )
 
         request.app.state.config.JINA_API_KEY = form_data.web.search.jina_api_key
+        request.app.state.config.ZHIPUAI_API_KEY = form_data.web.search.zhipuai_api_key
         request.app.state.config.BING_SEARCH_V7_ENDPOINT = (
             form_data.web.search.bing_search_v7_endpoint
         )
@@ -589,6 +593,7 @@ async def update_rag_config(
                 "searchapi_engine": request.app.state.config.SEARCHAPI_ENGINE,
                 "tavily_api_key": request.app.state.config.TAVILY_API_KEY,
                 "jina_api_key": request.app.state.config.JINA_API_KEY,
+                "zhipuai_api_key": request.app.state.config.ZHIPUAI_API_KEY,
                 "bing_search_v7_endpoint": request.app.state.config.BING_SEARCH_V7_ENDPOINT,
                 "bing_search_v7_subscription_key": request.app.state.config.BING_SEARCH_V7_SUBSCRIPTION_KEY,
                 "result_count": request.app.state.config.RAG_WEB_SEARCH_RESULT_COUNT,
@@ -1232,6 +1237,12 @@ def search_web(request: Request, engine: str, query: str) -> list[SearchResult]:
             query,
             request.app.state.config.RAG_WEB_SEARCH_RESULT_COUNT,
             request.app.state.config.RAG_WEB_SEARCH_DOMAIN_FILTER_LIST,
+        )
+    elif engine == "searchpro":
+        return search_pro(
+            request.app.state.config.ZHIPUAI_API_KEY,
+            query,
+            request.app.state.config.RAG_WEB_SEARCH_RESULT_COUNT,
         )
     else:
         raise Exception("No search engine API key found in environment variables")

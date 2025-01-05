@@ -13,11 +13,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlencode, parse_qs, urlparse
 from pydantic import BaseModel
 from sqlalchemy import text
-
-from typing import Optional
-from aiocache import cached
 import aiohttp
-import requests
 
 
 from fastapi import (
@@ -165,6 +161,7 @@ from open_webui.config import (
     RAG_WEB_SEARCH_CONCURRENT_REQUESTS,
     RAG_WEB_SEARCH_DOMAIN_FILTER_LIST,
     JINA_API_KEY,
+    ZHIPUAI_API_KEY,
     SEARCHAPI_API_KEY,
     SEARCHAPI_ENGINE,
     SEARXNG_QUERY_URL,
@@ -517,6 +514,7 @@ app.state.config.TAVILY_API_KEY = TAVILY_API_KEY
 app.state.config.SEARCHAPI_API_KEY = SEARCHAPI_API_KEY
 app.state.config.SEARCHAPI_ENGINE = SEARCHAPI_ENGINE
 app.state.config.JINA_API_KEY = JINA_API_KEY
+app.state.config.ZHIPUAI_API_KEY = ZHIPUAI_API_KEY
 app.state.config.BING_SEARCH_V7_ENDPOINT = BING_SEARCH_V7_ENDPOINT
 app.state.config.BING_SEARCH_V7_SUBSCRIPTION_KEY = BING_SEARCH_V7_SUBSCRIPTION_KEY
 

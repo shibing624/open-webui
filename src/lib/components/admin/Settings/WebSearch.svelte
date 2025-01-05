@@ -261,6 +261,17 @@
 									bind:value={webConfig.search.jina_api_key}
 								/>
 							</div>
+						{:else if webConfig.search.engine === 'searchpro'}
+							<div>
+								<div class=" self-center text-xs font-medium mb-1">
+									{$i18n.t('ZHIPUAI API Key')}
+								</div>
+
+								<SensitiveInput
+									placeholder={$i18n.t('Enter ZHIPUAI API Key')}
+									bind:value={webConfig.search.zhipuai_api_key}
+								/>
+							</div>
 						{:else if webConfig.search.engine === 'bing'}
 							<div>
 								<div class=" self-center text-xs font-medium mb-1">
