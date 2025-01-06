@@ -343,7 +343,7 @@ BYPASS_MODEL_ACCESS_CONTROL = (
 WEBUI_SECRET_KEY = os.environ.get(
     "WEBUI_SECRET_KEY",
     os.environ.get(
-        "WEBUI_JWT_SECRET_KEY", "t0p-s3cr3t"
+        "WEBUI_JWT_SECRET_KEY", "t0p-s3cr3t-ssss0k"
     ),  # DEPRECATED: remove at next major version
 )
 
