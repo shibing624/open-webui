@@ -7,5 +7,4 @@ export RAG_EMBEDDING_MODEL=shibing624/text2vec-base-multilingual
 export CHUNK_SIZE=1000
 export RAG_WEB_SEARCH_ENGINE=searchpro # 搜索工具，eg：bing，searchpro，serper，jina,...
 export ZHIPUAI_API_KEY=xxx
-export OFFLINE_MODE=True
 uvicorn open_webui.main:app --port $PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload

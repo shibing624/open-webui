@@ -56,4 +56,5 @@ fi
 
 ps -ef | grep "open_webui" | grep -v "grep" | awk '{print $2}' | xargs kill -9
 
-WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY" exec uvicorn open_webui.main:app --host "$HOST" --port "$PORT" --forwarded-allow-ips '*'
+export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
+nohup uvicorn open_webui.main:app --host "$HOST" --port "$PORT" --forwarded-allow-ips '*' > webui.log 2>&1 &
