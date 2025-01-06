@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+#set -x
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd "$SCRIPT_DIR" || exit
 
@@ -20,12 +20,12 @@ if test "$WEBUI_SECRET_KEY $WEBUI_JWT_SECRET_KEY" = " "; then
   WEBUI_SECRET_KEY=$(cat "$KEY_FILE")
 fi
 
-if [[ "${USE_OLLAMA_DOCKER,,}" == "true" ]]; then
+if [[ "$(echo "${USE_OLLAMA_DOCKER}" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
     echo "USE_OLLAMA is set to true, starting ollama serve."
     ollama serve &
 fi
 
-if [[ "${USE_CUDA_DOCKER,,}" == "true" ]]; then
+if [[ "$(echo "${USE_CUDA_DOCKER}" | tr '[:upper:]' '[:lower:]')" == "true" ]]; then
   echo "CUDA is enabled, appending LD_LIBRARY_PATH to include torch/cudnn & cublas libraries."
   export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib/python3.11/site-packages/torch/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib"
 fi
@@ -54,7 +54,9 @@ if [ -n "$SPACE_ID" ]; then
   export WEBUI_URL=${SPACE_HOST}
 fi
 
-ps -ef | grep "open_webui" | grep -v "grep" | awk '{print $2}' | xargs kill -9
+ps -ef | grep "open_webui.main:app" | grep -v "grep" | awk '{print $2}' | xargs kill -9
 
 export WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY"
-nohup gunicorn -k uvicorn.workers.UvicornWorker open_webui.main:app --bind "$HOST:$PORT" --forwarded-allow-ips '*' --workers 2 --log-file webui.log --log-level info >> webui.log 2>&1 &
+echo "WEBUI_SECRET_KEY: $WEBUI_SECRET_KEY"
+echo "Starting web, log file: webui.log"
+nohup uvicorn open_webui.main:app --host "$HOST" --port "$PORT" --forwarded-allow-ips '*' >> webui.log 2>&1 &
