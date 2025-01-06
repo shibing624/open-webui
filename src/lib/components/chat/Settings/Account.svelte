@@ -262,20 +262,20 @@
 
 		<hr class=" dark:border-gray-850 my-4" />
 
-		<div class="flex justify-between items-center text-sm">
-			<div class="  font-medium">{$i18n.t('API keys')}</div>
-			<button
-				class=" text-xs font-medium text-gray-500"
-				type="button"
-				on:click={() => {
-					showAPIKeys = !showAPIKeys;
-				}}>{showAPIKeys ? $i18n.t('Hide') : $i18n.t('Show')}</button
-			>
-		</div>
+		{#if $config?.features?.enable_api_key ?? true}
+			<div class="flex justify-between items-center text-sm">
+				<div class="font-medium">{$i18n.t('API keys')}</div>
+				<button
+					class="text-xs font-medium text-gray-500"
+					type="button"
+					on:click={() => {
+						showAPIKeys = !showAPIKeys;
+					}}>{showAPIKeys ? $i18n.t('Hide') : $i18n.t('Show')}</button
+				>
+			</div>
 
-		{#if showAPIKeys}
-			<div class="flex flex-col gap-4">
-				{#if $config?.features?.enable_api_key ?? true}
+			{#if showAPIKeys}
+				<div class="flex flex-col gap-4">
 					<div class="justify-between w-full">
 						<div class="flex justify-between w-full">
 							<div class="self-center text-xs font-medium">{$i18n.t('JWT Token')}</div>
@@ -419,8 +419,8 @@
 							{/if}
 						</div>
 					</div>
-				{/if}
-			</div>
+				</div>
+			{/if}
 		{/if}
 	</div>
 

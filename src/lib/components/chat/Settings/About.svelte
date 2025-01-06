@@ -71,15 +71,15 @@
 
 			<a href="https://github.com/shibing624" target="_blank">
 				<img
-					alt="Github Follow"
-					src="https://github.com/shibing624"
+					alt="Github Repo"
+					src="https://img.shields.io/github/stars/shibing624?style=social&label=shibing624"
 				/>
 			</a>
 
 			<a href="https://github.com/shibing624/open-webui" target="_blank">
 				<img
 					alt="Github Repo"
-					src="https://img.shields.io/github/stars/shibing624/open-webui?style=social&label=Star us on Github"
+					src="https://img.shields.io/github/stars/shibing624/open-webui?style=social&label=open-webui"
 				/>
 			</a>
 		</div>
