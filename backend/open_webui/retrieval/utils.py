@@ -29,7 +29,6 @@ log.setLevel(SRC_LOG_LEVELS["RAG"])
 
 
 from typing import Any
-
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.retrievers import BaseRetriever
 
@@ -314,6 +313,7 @@ def get_embedding_function(
     embedding_batch_size,
 ):
     if embedding_engine == "":
+        log.debug(f"No embedding engine specified, using default, embedding_function: {embedding_function}")
         return lambda query, user=None: embedding_function.encode(query).tolist()
     elif embedding_engine in ["ollama", "openai"]:
         func = lambda query, user=None: generate_embeddings(

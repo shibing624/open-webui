@@ -1892,6 +1892,12 @@ JINA_API_KEY = PersistentConfig(
     os.getenv("JINA_API_KEY", ""),
 )
 
+ZHIPUAI_API_KEY = PersistentConfig(
+    "ZHIPUAI_API_KEY",
+    "rag.web.search.zhipuai_api_key",
+    os.getenv("ZHIPUAI_API_KEY", ""),
+)
+
 SEARCHAPI_API_KEY = PersistentConfig(
     "SEARCHAPI_API_KEY",
     "rag.web.search.searchapi_api_key",
