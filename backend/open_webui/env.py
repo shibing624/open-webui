@@ -51,6 +51,13 @@ if USE_CUDA.lower() == "true":
 else:
     DEVICE_TYPE = "cpu"
 
+try:
+    import torch
+
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        DEVICE_TYPE = "mps"
+except Exception:
+    pass
 
 ####################################
 # LOGGING
@@ -83,6 +90,7 @@ log_sources = [
     "RAG",
     "WEBHOOK",
     "SOCKET",
+    "OAUTH",
 ]
 
 SRC_LOG_LEVELS = {}
@@ -103,6 +111,7 @@ if WEBUI_NAME != "Open WebUI":
 
 WEBUI_FAVICON_URL = "https://www.mulanai.com/chatpilot_favicon.png"
 
+TRUSTED_SIGNATURE_KEY = os.environ.get("TRUSTED_SIGNATURE_KEY", "")
 
 ####################################
 # ENV (dev,test,prod)
@@ -267,6 +276,8 @@ print(f"DATABASE_URL: {DATABASE_URL}")
 if "postgres://" in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
 
+DATABASE_SCHEMA = os.environ.get("DATABASE_SCHEMA", None)
+
 DATABASE_POOL_SIZE = os.environ.get("DATABASE_POOL_SIZE", 0)
 
 if DATABASE_POOL_SIZE == "":
@@ -313,7 +324,7 @@ RESET_CONFIG_ON_START = (
 
 
 ENABLE_REALTIME_CHAT_SAVE = (
-    os.environ.get("ENABLE_REALTIME_CHAT_SAVE", "True").lower() == "true"
+    os.environ.get("ENABLE_REALTIME_CHAT_SAVE", "False").lower() == "true"
 )
 
 ####################################
@@ -347,14 +358,22 @@ WEBUI_SECRET_KEY = os.environ.get(
     ),  # DEPRECATED: remove at next major version
 )
 
-WEBUI_SESSION_COOKIE_SAME_SITE = os.environ.get(
-    "WEBUI_SESSION_COOKIE_SAME_SITE",
-    os.environ.get("WEBUI_SESSION_COOKIE_SAME_SITE", "lax"),
+WEBUI_SESSION_COOKIE_SAME_SITE = os.environ.get("WEBUI_SESSION_COOKIE_SAME_SITE", "lax")
+
+WEBUI_SESSION_COOKIE_SECURE = (
+    os.environ.get("WEBUI_SESSION_COOKIE_SECURE", "false").lower() == "true"
 )
 
-WEBUI_SESSION_COOKIE_SECURE = os.environ.get(
-    "WEBUI_SESSION_COOKIE_SECURE",
-    os.environ.get("WEBUI_SESSION_COOKIE_SECURE", "false").lower() == "true",
+WEBUI_AUTH_COOKIE_SAME_SITE = os.environ.get(
+    "WEBUI_AUTH_COOKIE_SAME_SITE", WEBUI_SESSION_COOKIE_SAME_SITE
+)
+
+WEBUI_AUTH_COOKIE_SECURE = (
+    os.environ.get(
+        "WEBUI_AUTH_COOKIE_SECURE",
+        os.environ.get("WEBUI_SESSION_COOKIE_SECURE", "false"),
+    ).lower()
+    == "true"
 )
 
 if WEBUI_AUTH and WEBUI_SECRET_KEY == "":

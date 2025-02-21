@@ -25,8 +25,8 @@ from open_webui.env import (
     WEBUI_AUTH,
     WEBUI_AUTH_TRUSTED_EMAIL_HEADER,
     WEBUI_AUTH_TRUSTED_NAME_HEADER,
-    WEBUI_SESSION_COOKIE_SAME_SITE,
-    WEBUI_SESSION_COOKIE_SECURE,
+    WEBUI_AUTH_COOKIE_SAME_SITE,
+    WEBUI_AUTH_COOKIE_SECURE,
     SRC_LOG_LEVELS,
 )
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -51,7 +51,7 @@ from open_webui.utils.access_control import get_permissions
 from typing import Optional, List
 
 from ssl import CERT_REQUIRED, PROTOCOL_TLS
-from ldap3 import Server, Connection, ALL, Tls
+from ldap3 import Server, Connection, NONE, Tls
 from ldap3.utils.conv import escape_filter_chars
 
 router = APIRouter()
@@ -95,8 +95,8 @@ async def get_session_user(
         value=token,
         expires=datetime_expires_at,
         httponly=True,  # Ensures the cookie is not accessible via JavaScript
-        samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
-        secure=WEBUI_SESSION_COOKIE_SECURE,
+        samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+        secure=WEBUI_AUTH_COOKIE_SECURE,
     )
 
     user_permissions = get_permissions(
@@ -164,12 +164,13 @@ async def update_password(
 ############################
 # LDAP Authentication
 ############################
-@router.post("/ldap", response_model=SigninResponse)
+@router.post("/ldap", response_model=SessionUserResponse)
 async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
     ENABLE_LDAP = request.app.state.config.ENABLE_LDAP
     LDAP_SERVER_LABEL = request.app.state.config.LDAP_SERVER_LABEL
     LDAP_SERVER_HOST = request.app.state.config.LDAP_SERVER_HOST
     LDAP_SERVER_PORT = request.app.state.config.LDAP_SERVER_PORT
+    LDAP_ATTRIBUTE_FOR_MAIL = request.app.state.config.LDAP_ATTRIBUTE_FOR_MAIL
     LDAP_ATTRIBUTE_FOR_USERNAME = request.app.state.config.LDAP_ATTRIBUTE_FOR_USERNAME
     LDAP_SEARCH_BASE = request.app.state.config.LDAP_SEARCH_BASE
     LDAP_SEARCH_FILTERS = request.app.state.config.LDAP_SEARCH_FILTERS
@@ -201,7 +202,7 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
         server = Server(
             host=LDAP_SERVER_HOST,
             port=LDAP_SERVER_PORT,
-            get_info=ALL,
+            get_info=NONE,
             use_ssl=LDAP_USE_TLS,
             tls=tls,
         )
@@ -218,7 +219,11 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
         search_success = connection_app.search(
             search_base=LDAP_SEARCH_BASE,
             search_filter=f"(&({LDAP_ATTRIBUTE_FOR_USERNAME}={escape_filter_chars(form_data.user.lower())}){LDAP_SEARCH_FILTERS})",
-            attributes=[f"{LDAP_ATTRIBUTE_FOR_USERNAME}", "mail", "cn"],
+            attributes=[
+                f"{LDAP_ATTRIBUTE_FOR_USERNAME}",
+                f"{LDAP_ATTRIBUTE_FOR_MAIL}",
+                "cn",
+            ],
         )
 
         if not search_success:
@@ -226,7 +231,9 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
 
         entry = connection_app.entries[0]
         username = str(entry[f"{LDAP_ATTRIBUTE_FOR_USERNAME}"]).lower()
-        mail = str(entry["mail"])
+        mail = str(entry[f"{LDAP_ATTRIBUTE_FOR_MAIL}"])
+        if not mail or mail == "" or mail == "[]":
+            raise HTTPException(400, f"User {form_data.user} does not have mail.")
         cn = str(entry["cn"])
         user_dn = entry.entry_dn
 
@@ -244,9 +251,19 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
             user = Users.get_user_by_email(mail)
             if not user:
                 try:
+                    user_count = Users.get_num_users()
+                    if (
+                        request.app.state.USER_COUNT
+                        and user_count >= request.app.state.USER_COUNT
+                    ):
+                        raise HTTPException(
+                            status.HTTP_403_FORBIDDEN,
+                            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
+                        )
+
                     role = (
                         "admin"
-                        if Users.get_num_users() == 0
+                        if user_count == 0
                         else request.app.state.config.DEFAULT_USER_ROLE
                     )
 
@@ -281,6 +298,10 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
                     httponly=True,  # Ensures the cookie is not accessible via JavaScript
                 )
 
+                user_permissions = get_permissions(
+                    user.id, request.app.state.config.USER_PERMISSIONS
+                )
+
                 return {
                     "token": token,
                     "token_type": "Bearer",
@@ -289,6 +310,7 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
                     "name": user.name,
                     "role": user.role,
                     "profile_image_url": user.profile_image_url,
+                    "permissions": user_permissions,
                 }
             else:
                 raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
@@ -371,8 +393,8 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             value=token,
             expires=datetime_expires_at,
             httponly=True,  # Ensures the cookie is not accessible via JavaScript
-            samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
-            secure=WEBUI_SESSION_COOKIE_SECURE,
+            samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+            secure=WEBUI_AUTH_COOKIE_SECURE,
         )
 
         user_permissions = get_permissions(
@@ -401,6 +423,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 
 @router.post("/signup", response_model=SessionUserResponse)
 async def signup(request: Request, response: Response, form_data: SignupForm):
+
     if WEBUI_AUTH:
         if (
             not request.app.state.config.ENABLE_SIGNUP
@@ -415,6 +438,12 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
                 status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.ACCESS_PROHIBITED
             )
 
+    user_count = Users.get_num_users()
+    if request.app.state.USER_COUNT and user_count >= request.app.state.USER_COUNT:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail=ERROR_MESSAGES.ACCESS_PROHIBITED
+        )
+
     if not validate_email_format(form_data.email.lower()):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.INVALID_EMAIL_FORMAT
@@ -425,12 +454,10 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
 
     try:
         role = (
-            "admin"
-            if Users.get_num_users() == 0
-            else request.app.state.config.DEFAULT_USER_ROLE
+            "admin" if user_count == 0 else request.app.state.config.DEFAULT_USER_ROLE
         )
 
-        if Users.get_num_users() == 0:
+        if user_count == 0:
             # Disable signup after the first user is created
             request.app.state.config.ENABLE_SIGNUP = False
 
@@ -466,12 +493,13 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
                 value=token,
                 expires=datetime_expires_at,
                 httponly=True,  # Ensures the cookie is not accessible via JavaScript
-                samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
-                secure=WEBUI_SESSION_COOKIE_SECURE,
+                samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
+                secure=WEBUI_AUTH_COOKIE_SECURE,
             )
 
             if request.app.state.config.WEBHOOK_URL:
                 post_webhook(
+                    request.app.state.WEBUI_NAME,
                     request.app.state.config.WEBHOOK_URL,
                     WEBHOOK_MESSAGES.USER_SIGNUP(user.name),
                     {
@@ -518,7 +546,8 @@ async def signout(request: Request, response: Response):
                             if logout_url:
                                 response.delete_cookie("oauth_id_token")
                                 return RedirectResponse(
-                                    url=f"{logout_url}?id_token_hint={oauth_id_token}"
+                                    headers=response.headers,
+                                    url=f"{logout_url}?id_token_hint={oauth_id_token}",
                                 )
                         else:
                             raise HTTPException(
@@ -691,6 +720,7 @@ class LdapServerConfig(BaseModel):
     label: str
     host: str
     port: Optional[int] = None
+    attribute_for_mail: str = "mail"
     attribute_for_username: str = "uid"
     app_dn: str
     app_dn_password: str
@@ -707,6 +737,7 @@ async def get_ldap_server(request: Request, user=Depends(get_admin_user)):
         "label": request.app.state.config.LDAP_SERVER_LABEL,
         "host": request.app.state.config.LDAP_SERVER_HOST,
         "port": request.app.state.config.LDAP_SERVER_PORT,
+        "attribute_for_mail": request.app.state.config.LDAP_ATTRIBUTE_FOR_MAIL,
         "attribute_for_username": request.app.state.config.LDAP_ATTRIBUTE_FOR_USERNAME,
         "app_dn": request.app.state.config.LDAP_APP_DN,
         "app_dn_password": request.app.state.config.LDAP_APP_PASSWORD,
@@ -725,6 +756,7 @@ async def update_ldap_server(
     required_fields = [
         "label",
         "host",
+        "attribute_for_mail",
         "attribute_for_username",
         "app_dn",
         "app_dn_password",
@@ -743,6 +775,7 @@ async def update_ldap_server(
     request.app.state.config.LDAP_SERVER_LABEL = form_data.label
     request.app.state.config.LDAP_SERVER_HOST = form_data.host
     request.app.state.config.LDAP_SERVER_PORT = form_data.port
+    request.app.state.config.LDAP_ATTRIBUTE_FOR_MAIL = form_data.attribute_for_mail
     request.app.state.config.LDAP_ATTRIBUTE_FOR_USERNAME = (
         form_data.attribute_for_username
     )
@@ -758,6 +791,7 @@ async def update_ldap_server(
         "label": request.app.state.config.LDAP_SERVER_LABEL,
         "host": request.app.state.config.LDAP_SERVER_HOST,
         "port": request.app.state.config.LDAP_SERVER_PORT,
+        "attribute_for_mail": request.app.state.config.LDAP_ATTRIBUTE_FOR_MAIL,
         "attribute_for_username": request.app.state.config.LDAP_ATTRIBUTE_FOR_USERNAME,
         "app_dn": request.app.state.config.LDAP_APP_DN,
         "app_dn_password": request.app.state.config.LDAP_APP_PASSWORD,

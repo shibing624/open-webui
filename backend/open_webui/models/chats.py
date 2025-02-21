@@ -393,7 +393,7 @@ class ChatTable:
         limit: int = 50,
     ) -> list[ChatModel]:
         with get_db() as db:
-            query = db.query(Chat).filter_by(user_id=user_id).filter_by(folder_id=None)
+            query = db.query(Chat).filter_by(user_id=user_id)
             if not include_archived:
                 query = query.filter_by(archived=False)
 
@@ -469,6 +469,8 @@ class ChatTable:
     def get_chat_by_share_id(self, id: str) -> Optional[ChatModel]:
         try:
             with get_db() as db:
+                # it is possible that the shared link was deleted. hence,
+                # we check if the chat is still shared by checking if a chat with the share_id exists
                 chat = db.query(Chat).filter_by(share_id=id).first()
 
                 if chat:

@@ -112,7 +112,7 @@
 <div bind:this={folderElement} class="relative {className}">
 	{#if draggedOver}
 		<div
-			class="absolute top-0 left-0 w-full h-full rounded-sm bg-gray-100/50 dark:bg-gray-700/20 bg-opacity-50 dark:bg-opacity-10 z-50 pointer-events-none touch-none"
+			class="absolute top-0 left-0 w-full h-full rounded-xs bg-gray-100/50 dark:bg-gray-700/20 bg-opacity-50 dark:bg-opacity-10 z-50 pointer-events-none touch-none"
 		></div>
 	{/if}
 
@@ -145,8 +145,11 @@
 
 				{#if onAdd}
 					<button
-						class="absolute z-10 right-2 self-center flex items-center"
+						class="absolute z-10 right-2 invisible group-hover:visible self-center flex items-center dark:text-gray-300"
 						on:pointerup={(e) => {
+							e.stopPropagation();
+						}}
+						on:click={(e) => {
 							e.stopPropagation();
 							onAdd();
 						}}

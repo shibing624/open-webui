@@ -13,7 +13,12 @@ from contextlib import asynccontextmanager
 from urllib.parse import urlencode, parse_qs, urlparse
 from pydantic import BaseModel
 from sqlalchemy import text
+
+from typing import Optional
+from aiocache import cached
 import aiohttp
+import requests
+
 
 from fastapi import (
     Depends,
@@ -38,6 +43,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response, StreamingResponse
+
 
 from open_webui.socket.main import (
     app as socket_app,
@@ -82,6 +88,7 @@ from open_webui.models.models import Models
 from open_webui.models.users import UserModel, Users
 
 from open_webui.config import (
+    LICENSE_KEY,
     # Ollama
     ENABLE_OLLAMA_API,
     OLLAMA_BASE_URLS,
@@ -91,6 +98,23 @@ from open_webui.config import (
     OPENAI_API_BASE_URLS,
     OPENAI_API_KEYS,
     OPENAI_API_CONFIGS,
+    # Direct Connections
+    ENABLE_DIRECT_CONNECTIONS,
+    # Code Execution
+    CODE_EXECUTION_ENGINE,
+    CODE_EXECUTION_JUPYTER_URL,
+    CODE_EXECUTION_JUPYTER_AUTH,
+    CODE_EXECUTION_JUPYTER_AUTH_TOKEN,
+    CODE_EXECUTION_JUPYTER_AUTH_PASSWORD,
+    CODE_EXECUTION_JUPYTER_TIMEOUT,
+    ENABLE_CODE_INTERPRETER,
+    CODE_INTERPRETER_ENGINE,
+    CODE_INTERPRETER_PROMPT_TEMPLATE,
+    CODE_INTERPRETER_JUPYTER_URL,
+    CODE_INTERPRETER_JUPYTER_AUTH,
+    CODE_INTERPRETER_JUPYTER_AUTH_TOKEN,
+    CODE_INTERPRETER_JUPYTER_AUTH_PASSWORD,
+    CODE_INTERPRETER_JUPYTER_TIMEOUT,
     # Image
     AUTOMATIC1111_API_AUTH,
     AUTOMATIC1111_BASE_URL,
@@ -102,12 +126,15 @@ from open_webui.config import (
     COMFYUI_WORKFLOW,
     COMFYUI_WORKFLOW_NODES,
     ENABLE_IMAGE_GENERATION,
+    ENABLE_IMAGE_PROMPT_GENERATION,
     IMAGE_GENERATION_ENGINE,
     IMAGE_GENERATION_MODEL,
     IMAGE_SIZE,
     IMAGE_STEPS,
     IMAGES_OPENAI_API_BASE_URL,
     IMAGES_OPENAI_API_KEY,
+    IMAGES_GEMINI_API_BASE_URL,
+    IMAGES_GEMINI_API_KEY,
     # Audio
     AUDIO_STT_ENGINE,
     AUDIO_STT_MODEL,
@@ -122,12 +149,18 @@ from open_webui.config import (
     AUDIO_TTS_VOICE,
     AUDIO_TTS_AZURE_SPEECH_REGION,
     AUDIO_TTS_AZURE_SPEECH_OUTPUT_FORMAT,
+    PLAYWRIGHT_WS_URI,
+    FIRECRAWL_API_BASE_URL,
+    FIRECRAWL_API_KEY,
+    RAG_WEB_LOADER_ENGINE,
     WHISPER_MODEL,
+    DEEPGRAM_API_KEY,
     WHISPER_MODEL_AUTO_UPDATE,
     WHISPER_MODEL_DIR,
     # Retrieval
     RAG_TEMPLATE,
     DEFAULT_RAG_TEMPLATE,
+    RAG_FULL_CONTEXT,
     RAG_EMBEDDING_MODEL,
     RAG_EMBEDDING_MODEL_AUTO_UPDATE,
     RAG_EMBEDDING_MODEL_TRUST_REMOTE_CODE,
@@ -155,13 +188,16 @@ from open_webui.config import (
     YOUTUBE_LOADER_PROXY_URL,
     # Retrieval (Web Search)
     RAG_WEB_SEARCH_ENGINE,
+    RAG_WEB_SEARCH_FULL_CONTEXT,
     RAG_WEB_SEARCH_RESULT_COUNT,
     RAG_WEB_SEARCH_CONCURRENT_REQUESTS,
+    RAG_WEB_SEARCH_TRUST_ENV,
     RAG_WEB_SEARCH_DOMAIN_FILTER_LIST,
     JINA_API_KEY,
-    ZHIPUAI_API_KEY,
     SEARCHAPI_API_KEY,
     SEARCHAPI_ENGINE,
+    SERPAPI_API_KEY,
+    SERPAPI_ENGINE,
     SEARXNG_QUERY_URL,
     SERPER_API_KEY,
     SERPLY_API_KEY,
@@ -171,8 +207,10 @@ from open_webui.config import (
     BING_SEARCH_V7_ENDPOINT,
     BING_SEARCH_V7_SUBSCRIPTION_KEY,
     BRAVE_SEARCH_API_KEY,
+    EXA_API_KEY,
     KAGI_SEARCH_API_KEY,
     MOJEEK_SEARCH_API_KEY,
+    BOCHA_SEARCH_API_KEY,
     GOOGLE_PSE_API_KEY,
     GOOGLE_PSE_ENGINE_ID,
     GOOGLE_DRIVE_CLIENT_ID,
@@ -220,6 +258,7 @@ from open_webui.config import (
     LDAP_SERVER_LABEL,
     LDAP_SERVER_HOST,
     LDAP_SERVER_PORT,
+    LDAP_ATTRIBUTE_FOR_MAIL,
     LDAP_ATTRIBUTE_FOR_USERNAME,
     LDAP_SEARCH_FILTERS,
     LDAP_SEARCH_BASE,
@@ -244,11 +283,13 @@ from open_webui.config import (
     TASK_MODEL,
     TASK_MODEL_EXTERNAL,
     ENABLE_TAGS_GENERATION,
+    ENABLE_TITLE_GENERATION,
     ENABLE_SEARCH_QUERY_GENERATION,
     ENABLE_RETRIEVAL_QUERY_GENERATION,
     ENABLE_AUTOCOMPLETE_GENERATION,
     TITLE_GENERATION_PROMPT_TEMPLATE,
     TAGS_GENERATION_PROMPT_TEMPLATE,
+    IMAGE_PROMPT_GENERATION_PROMPT_TEMPLATE,
     TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE,
     QUERY_GENERATION_PROMPT_TEMPLATE,
     AUTOCOMPLETE_GENERATION_PROMPT_TEMPLATE,
@@ -274,6 +315,7 @@ from open_webui.env import (
     OFFLINE_MODE,
 )
 
+
 from open_webui.utils.models import (
     get_all_models,
     get_all_base_models,
@@ -288,14 +330,16 @@ from open_webui.utils.middleware import process_chat_payload, process_chat_respo
 from open_webui.utils.access_control import has_access
 
 from open_webui.utils.auth import (
+    get_license_data,
     decode_token,
     get_admin_user,
     get_verified_user,
 )
-from open_webui.utils.oauth import oauth_manager
+from open_webui.utils.oauth import OAuthManager
 from open_webui.utils.security_headers import SecurityHeadersMiddleware
 
 from open_webui.tasks import stop_task, list_tasks  # Import from tasks.py
+
 
 if SAFE_MODE:
     print("SAFE MODE ENABLED")
@@ -312,24 +356,28 @@ class SPAStaticFiles(StaticFiles):
             return await super().get_response(path, scope)
         except (HTTPException, StarletteHTTPException) as ex:
             if ex.status_code == 404:
-                return await super().get_response("index.html", scope)
+                if path.endswith(".js"):
+                    # Return 404 for javascript files
+                    raise ex
+                else:
+                    return await super().get_response("index.html", scope)
             else:
                 raise ex
 
 
 print(
     rf"""
-  ___                    __        __   _     _   _ ___
- / _ \ _ __   ___ _ __   \ \      / /__| |__ | | | |_ _|
-| | | | '_ \ / _ \ '_ \   \ \ /\ / / _ \ '_ \| | | || |
-| |_| | |_) |  __/ | | |   \ V  V /  __/ |_) | |_| || |
- \___/| .__/ \___|_| |_|    \_/\_/ \___|_.__/ \___/|___|
-      |_|
+ ██████╗ ██████╗ ███████╗███╗   ██╗    ██╗    ██╗███████╗██████╗ ██╗   ██╗██╗
+██╔═══██╗██╔══██╗██╔════╝████╗  ██║    ██║    ██║██╔════╝██╔══██╗██║   ██║██║
+██║   ██║██████╔╝█████╗  ██╔██╗ ██║    ██║ █╗ ██║█████╗  ██████╔╝██║   ██║██║
+██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║    ██║███╗██║██╔══╝  ██╔══██╗██║   ██║██║
+╚██████╔╝██║     ███████╗██║ ╚████║    ╚███╔███╔╝███████╗██████╔╝╚██████╔╝██║
+ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝     ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝ ╚═╝
 
 
 v{VERSION} - building the best open-source AI user interface.
 {f"Commit: {WEBUI_BUILD_HASH}" if WEBUI_BUILD_HASH != "dev-build" else ""}
-https://github.com/shibing624/open-webui
+https://github.com/open-webui/open-webui
 """
 )
 
@@ -338,6 +386,9 @@ https://github.com/shibing624/open-webui
 async def lifespan(app: FastAPI):
     if RESET_CONFIG_ON_START:
         reset_config()
+
+    if app.state.config.LICENSE_KEY:
+        get_license_data(app, app.state.config.LICENSE_KEY)
 
     asyncio.create_task(periodic_usage_pool_cleanup())
     yield
@@ -350,7 +401,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+oauth_manager = OAuthManager(app)
+
 app.state.config = AppConfig()
+
+app.state.WEBUI_NAME = WEBUI_NAME
+app.state.config.LICENSE_KEY = LICENSE_KEY
 
 ########################################
 #
@@ -380,6 +436,14 @@ app.state.OPENAI_MODELS = {}
 
 ########################################
 #
+# DIRECT CONNECTIONS
+#
+########################################
+
+app.state.config.ENABLE_DIRECT_CONNECTIONS = ENABLE_DIRECT_CONNECTIONS
+
+########################################
+#
 # WEBUI
 #
 ########################################
@@ -399,6 +463,7 @@ app.state.config.JWT_EXPIRES_IN = JWT_EXPIRES_IN
 app.state.config.SHOW_ADMIN_DETAILS = SHOW_ADMIN_DETAILS
 app.state.config.ADMIN_EMAIL = ADMIN_EMAIL
 
+
 app.state.config.DEFAULT_MODELS = DEFAULT_MODELS
 app.state.config.DEFAULT_PROMPT_SUGGESTIONS = DEFAULT_PROMPT_SUGGESTIONS
 app.state.config.DEFAULT_USER_ROLE = DEFAULT_USER_ROLE
@@ -407,6 +472,7 @@ app.state.config.USER_PERMISSIONS = USER_PERMISSIONS
 app.state.config.WEBHOOK_URL = WEBHOOK_URL
 app.state.config.BANNERS = WEBUI_BANNERS
 app.state.config.MODEL_ORDER_LIST = MODEL_ORDER_LIST
+
 
 app.state.config.ENABLE_CHANNELS = ENABLE_CHANNELS
 app.state.config.ENABLE_COMMUNITY_SHARING = ENABLE_COMMUNITY_SHARING
@@ -428,6 +494,7 @@ app.state.config.ENABLE_LDAP = ENABLE_LDAP
 app.state.config.LDAP_SERVER_LABEL = LDAP_SERVER_LABEL
 app.state.config.LDAP_SERVER_HOST = LDAP_SERVER_HOST
 app.state.config.LDAP_SERVER_PORT = LDAP_SERVER_PORT
+app.state.config.LDAP_ATTRIBUTE_FOR_MAIL = LDAP_ATTRIBUTE_FOR_MAIL
 app.state.config.LDAP_ATTRIBUTE_FOR_USERNAME = LDAP_ATTRIBUTE_FOR_USERNAME
 app.state.config.LDAP_APP_DN = LDAP_APP_DN
 app.state.config.LDAP_APP_PASSWORD = LDAP_APP_PASSWORD
@@ -437,9 +504,11 @@ app.state.config.LDAP_USE_TLS = LDAP_USE_TLS
 app.state.config.LDAP_CA_CERT_FILE = LDAP_CA_CERT_FILE
 app.state.config.LDAP_CIPHERS = LDAP_CIPHERS
 
+
 app.state.AUTH_TRUSTED_EMAIL_HEADER = WEBUI_AUTH_TRUSTED_EMAIL_HEADER
 app.state.AUTH_TRUSTED_NAME_HEADER = WEBUI_AUTH_TRUSTED_NAME_HEADER
 
+app.state.USER_COUNT = None
 app.state.TOOLS = {}
 app.state.FUNCTIONS = {}
 
@@ -455,6 +524,8 @@ app.state.config.RELEVANCE_THRESHOLD = RAG_RELEVANCE_THRESHOLD
 app.state.config.FILE_MAX_SIZE = RAG_FILE_MAX_SIZE
 app.state.config.FILE_MAX_COUNT = RAG_FILE_MAX_COUNT
 
+
+app.state.config.RAG_FULL_CONTEXT = RAG_FULL_CONTEXT
 app.state.config.ENABLE_RAG_HYBRID_SEARCH = ENABLE_RAG_HYBRID_SEARCH
 app.state.config.ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION = (
     ENABLE_RAG_WEB_LOADER_SSL_VERIFICATION
@@ -486,8 +557,10 @@ app.state.config.PDF_EXTRACT_IMAGES = PDF_EXTRACT_IMAGES
 app.state.config.YOUTUBE_LOADER_LANGUAGE = YOUTUBE_LOADER_LANGUAGE
 app.state.config.YOUTUBE_LOADER_PROXY_URL = YOUTUBE_LOADER_PROXY_URL
 
+
 app.state.config.ENABLE_RAG_WEB_SEARCH = ENABLE_RAG_WEB_SEARCH
 app.state.config.RAG_WEB_SEARCH_ENGINE = RAG_WEB_SEARCH_ENGINE
+app.state.config.RAG_WEB_SEARCH_FULL_CONTEXT = RAG_WEB_SEARCH_FULL_CONTEXT
 app.state.config.RAG_WEB_SEARCH_DOMAIN_FILTER_LIST = RAG_WEB_SEARCH_DOMAIN_FILTER_LIST
 
 app.state.config.ENABLE_GOOGLE_DRIVE_INTEGRATION = ENABLE_GOOGLE_DRIVE_INTEGRATION
@@ -497,6 +570,7 @@ app.state.config.GOOGLE_PSE_ENGINE_ID = GOOGLE_PSE_ENGINE_ID
 app.state.config.BRAVE_SEARCH_API_KEY = BRAVE_SEARCH_API_KEY
 app.state.config.KAGI_SEARCH_API_KEY = KAGI_SEARCH_API_KEY
 app.state.config.MOJEEK_SEARCH_API_KEY = MOJEEK_SEARCH_API_KEY
+app.state.config.BOCHA_SEARCH_API_KEY = BOCHA_SEARCH_API_KEY
 app.state.config.SERPSTACK_API_KEY = SERPSTACK_API_KEY
 app.state.config.SERPSTACK_HTTPS = SERPSTACK_HTTPS
 app.state.config.SERPER_API_KEY = SERPER_API_KEY
@@ -504,19 +578,27 @@ app.state.config.SERPLY_API_KEY = SERPLY_API_KEY
 app.state.config.TAVILY_API_KEY = TAVILY_API_KEY
 app.state.config.SEARCHAPI_API_KEY = SEARCHAPI_API_KEY
 app.state.config.SEARCHAPI_ENGINE = SEARCHAPI_ENGINE
+app.state.config.SERPAPI_API_KEY = SERPAPI_API_KEY
+app.state.config.SERPAPI_ENGINE = SERPAPI_ENGINE
 app.state.config.JINA_API_KEY = JINA_API_KEY
-app.state.config.ZHIPUAI_API_KEY = ZHIPUAI_API_KEY
 app.state.config.BING_SEARCH_V7_ENDPOINT = BING_SEARCH_V7_ENDPOINT
 app.state.config.BING_SEARCH_V7_SUBSCRIPTION_KEY = BING_SEARCH_V7_SUBSCRIPTION_KEY
+app.state.config.EXA_API_KEY = EXA_API_KEY
 
 app.state.config.RAG_WEB_SEARCH_RESULT_COUNT = RAG_WEB_SEARCH_RESULT_COUNT
 app.state.config.RAG_WEB_SEARCH_CONCURRENT_REQUESTS = RAG_WEB_SEARCH_CONCURRENT_REQUESTS
+app.state.config.RAG_WEB_LOADER_ENGINE = RAG_WEB_LOADER_ENGINE
+app.state.config.RAG_WEB_SEARCH_TRUST_ENV = RAG_WEB_SEARCH_TRUST_ENV
+app.state.config.PLAYWRIGHT_WS_URI = PLAYWRIGHT_WS_URI
+app.state.config.FIRECRAWL_API_BASE_URL = FIRECRAWL_API_BASE_URL
+app.state.config.FIRECRAWL_API_KEY = FIRECRAWL_API_KEY
 
 app.state.EMBEDDING_FUNCTION = None
 app.state.ef = None
 app.state.rf = None
 
 app.state.YOUTUBE_LOADER_TRANSLATION = None
+
 
 try:
     app.state.ef = get_ef(
@@ -532,6 +614,7 @@ try:
 except Exception as e:
     log.error(f"Error updating models: {e}")
     pass
+
 
 app.state.EMBEDDING_FUNCTION = get_embedding_function(
     app.state.config.RAG_EMBEDDING_ENGINE,
@@ -552,15 +635,48 @@ app.state.EMBEDDING_FUNCTION = get_embedding_function(
 
 ########################################
 #
+# CODE EXECUTION
+#
+########################################
+
+app.state.config.CODE_EXECUTION_ENGINE = CODE_EXECUTION_ENGINE
+app.state.config.CODE_EXECUTION_JUPYTER_URL = CODE_EXECUTION_JUPYTER_URL
+app.state.config.CODE_EXECUTION_JUPYTER_AUTH = CODE_EXECUTION_JUPYTER_AUTH
+app.state.config.CODE_EXECUTION_JUPYTER_AUTH_TOKEN = CODE_EXECUTION_JUPYTER_AUTH_TOKEN
+app.state.config.CODE_EXECUTION_JUPYTER_AUTH_PASSWORD = (
+    CODE_EXECUTION_JUPYTER_AUTH_PASSWORD
+)
+app.state.config.CODE_EXECUTION_JUPYTER_TIMEOUT = CODE_EXECUTION_JUPYTER_TIMEOUT
+
+app.state.config.ENABLE_CODE_INTERPRETER = ENABLE_CODE_INTERPRETER
+app.state.config.CODE_INTERPRETER_ENGINE = CODE_INTERPRETER_ENGINE
+app.state.config.CODE_INTERPRETER_PROMPT_TEMPLATE = CODE_INTERPRETER_PROMPT_TEMPLATE
+
+app.state.config.CODE_INTERPRETER_JUPYTER_URL = CODE_INTERPRETER_JUPYTER_URL
+app.state.config.CODE_INTERPRETER_JUPYTER_AUTH = CODE_INTERPRETER_JUPYTER_AUTH
+app.state.config.CODE_INTERPRETER_JUPYTER_AUTH_TOKEN = (
+    CODE_INTERPRETER_JUPYTER_AUTH_TOKEN
+)
+app.state.config.CODE_INTERPRETER_JUPYTER_AUTH_PASSWORD = (
+    CODE_INTERPRETER_JUPYTER_AUTH_PASSWORD
+)
+app.state.config.CODE_INTERPRETER_JUPYTER_TIMEOUT = CODE_INTERPRETER_JUPYTER_TIMEOUT
+
+########################################
+#
 # IMAGES
 #
 ########################################
 
 app.state.config.IMAGE_GENERATION_ENGINE = IMAGE_GENERATION_ENGINE
 app.state.config.ENABLE_IMAGE_GENERATION = ENABLE_IMAGE_GENERATION
+app.state.config.ENABLE_IMAGE_PROMPT_GENERATION = ENABLE_IMAGE_PROMPT_GENERATION
 
 app.state.config.IMAGES_OPENAI_API_BASE_URL = IMAGES_OPENAI_API_BASE_URL
 app.state.config.IMAGES_OPENAI_API_KEY = IMAGES_OPENAI_API_KEY
+
+app.state.config.IMAGES_GEMINI_API_BASE_URL = IMAGES_GEMINI_API_BASE_URL
+app.state.config.IMAGES_GEMINI_API_KEY = IMAGES_GEMINI_API_KEY
 
 app.state.config.IMAGE_GENERATION_MODEL = IMAGE_GENERATION_MODEL
 
@@ -577,6 +693,7 @@ app.state.config.COMFYUI_WORKFLOW_NODES = COMFYUI_WORKFLOW_NODES
 app.state.config.IMAGE_SIZE = IMAGE_SIZE
 app.state.config.IMAGE_STEPS = IMAGE_STEPS
 
+
 ########################################
 #
 # AUDIO
@@ -589,6 +706,7 @@ app.state.config.STT_ENGINE = AUDIO_STT_ENGINE
 app.state.config.STT_MODEL = AUDIO_STT_MODEL
 
 app.state.config.WHISPER_MODEL = WHISPER_MODEL
+app.state.config.DEEPGRAM_API_KEY = DEEPGRAM_API_KEY
 
 app.state.config.TTS_OPENAI_API_BASE_URL = AUDIO_TTS_OPENAI_API_BASE_URL
 app.state.config.TTS_OPENAI_API_KEY = AUDIO_TTS_OPENAI_API_KEY
@@ -598,12 +716,15 @@ app.state.config.TTS_VOICE = AUDIO_TTS_VOICE
 app.state.config.TTS_API_KEY = AUDIO_TTS_API_KEY
 app.state.config.TTS_SPLIT_ON = AUDIO_TTS_SPLIT_ON
 
+
 app.state.config.TTS_AZURE_SPEECH_REGION = AUDIO_TTS_AZURE_SPEECH_REGION
 app.state.config.TTS_AZURE_SPEECH_OUTPUT_FORMAT = AUDIO_TTS_AZURE_SPEECH_OUTPUT_FORMAT
+
 
 app.state.faster_whisper_model = None
 app.state.speech_synthesiser = None
 app.state.speech_speaker_embeddings_dataset = None
+
 
 ########################################
 #
@@ -615,13 +736,20 @@ app.state.speech_speaker_embeddings_dataset = None
 app.state.config.TASK_MODEL = TASK_MODEL
 app.state.config.TASK_MODEL_EXTERNAL = TASK_MODEL_EXTERNAL
 
+
 app.state.config.ENABLE_SEARCH_QUERY_GENERATION = ENABLE_SEARCH_QUERY_GENERATION
 app.state.config.ENABLE_RETRIEVAL_QUERY_GENERATION = ENABLE_RETRIEVAL_QUERY_GENERATION
 app.state.config.ENABLE_AUTOCOMPLETE_GENERATION = ENABLE_AUTOCOMPLETE_GENERATION
 app.state.config.ENABLE_TAGS_GENERATION = ENABLE_TAGS_GENERATION
+app.state.config.ENABLE_TITLE_GENERATION = ENABLE_TITLE_GENERATION
+
 
 app.state.config.TITLE_GENERATION_PROMPT_TEMPLATE = TITLE_GENERATION_PROMPT_TEMPLATE
 app.state.config.TAGS_GENERATION_PROMPT_TEMPLATE = TAGS_GENERATION_PROMPT_TEMPLATE
+app.state.config.IMAGE_PROMPT_GENERATION_PROMPT_TEMPLATE = (
+    IMAGE_PROMPT_GENERATION_PROMPT_TEMPLATE
+)
+
 app.state.config.TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE = (
     TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE
 )
@@ -632,6 +760,7 @@ app.state.config.AUTOCOMPLETE_GENERATION_PROMPT_TEMPLATE = (
 app.state.config.AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH = (
     AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH
 )
+
 
 ########################################
 #
@@ -687,8 +816,8 @@ async def check_url(request: Request, call_next):
 @app.middleware("http")
 async def inspect_websocket(request: Request, call_next):
     if (
-            "/ws/socket.io" in request.url.path
-            and request.query_params.get("transport") == "websocket"
+        "/ws/socket.io" in request.url.path
+        and request.query_params.get("transport") == "websocket"
     ):
         upgrade = (request.headers.get("Upgrade") or "").lower()
         connection = (request.headers.get("Connection") or "").lower().split(",")
@@ -710,14 +839,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 app.mount("/ws", socket_app)
+
 
 app.include_router(ollama.router, prefix="/ollama", tags=["ollama"])
 app.include_router(openai.router, prefix="/openai", tags=["openai"])
 
+
 app.include_router(pipelines.router, prefix="/api/v1/pipelines", tags=["pipelines"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(images.router, prefix="/api/v1/images", tags=["images"])
+
 app.include_router(audio.router, prefix="/api/v1/audio", tags=["audio"])
 app.include_router(retrieval.router, prefix="/api/v1/retrieval", tags=["retrieval"])
 
@@ -725,6 +858,7 @@ app.include_router(configs.router, prefix="/api/v1/configs", tags=["configs"])
 
 app.include_router(auths.router, prefix="/api/v1/auths", tags=["auths"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+
 
 app.include_router(channels.router, prefix="/api/v1/channels", tags=["channels"])
 app.include_router(chats.router, prefix="/api/v1/chats", tags=["chats"])
@@ -759,11 +893,11 @@ async def get_models(request: Request, user=Depends(get_verified_user)):
         for model in models:
             if model.get("arena"):
                 if has_access(
-                        user.id,
-                        type="read",
-                        access_control=model.get("info", {})
-                                .get("meta", {})
-                                .get("access_control", {}),
+                    user.id,
+                    type="read",
+                    access_control=model.get("info", {})
+                    .get("meta", {})
+                    .get("access_control", {}),
                 ):
                     filtered_models.append(model)
                 continue
@@ -771,7 +905,7 @@ async def get_models(request: Request, user=Depends(get_verified_user)):
             model_info = Models.get_model_by_id(model["id"])
             if model_info:
                 if user.id == model_info.user_id or has_access(
-                        user.id, type="read", access_control=model_info.access_control
+                    user.id, type="read", access_control=model_info.access_control
                 ):
                     filtered_models.append(model)
 
@@ -812,26 +946,37 @@ async def get_base_models(request: Request, user=Depends(get_admin_user)):
 
 @app.post("/api/chat/completions")
 async def chat_completion(
-        request: Request,
-        form_data: dict,
-        user=Depends(get_verified_user),
+    request: Request,
+    form_data: dict,
+    user=Depends(get_verified_user),
 ):
     if not request.app.state.MODELS:
         await get_all_models(request)
 
+    model_item = form_data.pop("model_item", {})
     tasks = form_data.pop("background_tasks", None)
-    try:
-        model_id = form_data.get("model", None)
-        if model_id not in request.app.state.MODELS:
-            raise Exception("Model not found")
-        model = request.app.state.MODELS[model_id]
 
-        # Check if user has access to the model
-        if not BYPASS_MODEL_ACCESS_CONTROL and user.role == "user":
-            try:
-                check_model_access(user, model)
-            except Exception as e:
-                raise e
+    try:
+        if not model_item.get("direct", False):
+            model_id = form_data.get("model", None)
+            if model_id not in request.app.state.MODELS:
+                raise Exception("Model not found")
+
+            model = request.app.state.MODELS[model_id]
+            model_info = Models.get_model_by_id(model_id)
+
+            # Check if user has access to the model
+            if not BYPASS_MODEL_ACCESS_CONTROL and user.role == "user":
+                try:
+                    check_model_access(user, model)
+                except Exception as e:
+                    raise e
+        else:
+            model = model_item
+            model_info = None
+
+            request.state.direct = True
+            request.state.model = model
 
         metadata = {
             "user_id": user.id,
@@ -841,13 +986,30 @@ async def chat_completion(
             "tool_ids": form_data.get("tool_ids", None),
             "files": form_data.get("files", None),
             "features": form_data.get("features", None),
+            "variables": form_data.get("variables", None),
+            "model": model_info.model_dump() if model_info else model,
+            "direct": model_item.get("direct", False),
+            **(
+                {"function_calling": "native"}
+                if form_data.get("params", {}).get("function_calling") == "native"
+                or (
+                    model_info
+                    and model_info.params.model_dump().get("function_calling")
+                    == "native"
+                )
+                else {}
+            ),
         }
+
+        request.state.metadata = metadata
         form_data["metadata"] = metadata
 
-        form_data, events = await process_chat_payload(
+        form_data, metadata, events = await process_chat_payload(
             request, form_data, metadata, user, model
         )
+
     except Exception as e:
+        log.debug(f"Error processing chat payload: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
@@ -855,6 +1017,7 @@ async def chat_completion(
 
     try:
         response = await chat_completion_handler(request, form_data, user)
+
         return await process_chat_response(
             request, response, form_data, user, events, metadata, tasks
         )
@@ -872,9 +1035,15 @@ generate_chat_completion = chat_completion
 
 @app.post("/api/chat/completed")
 async def chat_completed(
-        request: Request, form_data: dict, user=Depends(get_verified_user)
+    request: Request, form_data: dict, user=Depends(get_verified_user)
 ):
     try:
+        model_item = form_data.pop("model_item", {})
+
+        if model_item.get("direct", False):
+            request.state.direct = True
+            request.state.model = model_item
+
         return await chat_completed_handler(request, form_data, user)
     except Exception as e:
         raise HTTPException(
@@ -885,9 +1054,15 @@ async def chat_completed(
 
 @app.post("/api/chat/actions/{action_id}")
 async def chat_action(
-        request: Request, action_id: str, form_data: dict, user=Depends(get_verified_user)
+    request: Request, action_id: str, form_data: dict, user=Depends(get_verified_user)
 ):
     try:
+        model_item = form_data.pop("model_item", {})
+
+        if model_item.get("direct", False):
+            request.state.direct = True
+            request.state.model = model_item
+
         return await chat_action_handler(request, action_id, form_data, user)
     except Exception as e:
         raise HTTPException(
@@ -941,7 +1116,7 @@ async def get_app_config(request: Request):
     return {
         **({"onboarding": True} if onboarding else {}),
         "status": True,
-        "name": WEBUI_NAME,
+        "name": app.state.WEBUI_NAME,
         "version": VERSION,
         "default_locale": str(DEFAULT_LOCALE),
         "oauth": {
@@ -960,27 +1135,29 @@ async def get_app_config(request: Request):
             "enable_websocket": ENABLE_WEBSOCKET_SUPPORT,
             **(
                 {
+                    "enable_direct_connections": app.state.config.ENABLE_DIRECT_CONNECTIONS,
                     "enable_channels": app.state.config.ENABLE_CHANNELS,
                     "enable_web_search": app.state.config.ENABLE_RAG_WEB_SEARCH,
-                    "enable_google_drive_integration": app.state.config.ENABLE_GOOGLE_DRIVE_INTEGRATION,
+                    "enable_code_interpreter": app.state.config.ENABLE_CODE_INTERPRETER,
                     "enable_image_generation": app.state.config.ENABLE_IMAGE_GENERATION,
+                    "enable_autocomplete_generation": app.state.config.ENABLE_AUTOCOMPLETE_GENERATION,
                     "enable_community_sharing": app.state.config.ENABLE_COMMUNITY_SHARING,
                     "enable_message_rating": app.state.config.ENABLE_MESSAGE_RATING,
                     "enable_admin_export": ENABLE_ADMIN_EXPORT,
                     "enable_admin_chat_access": ENABLE_ADMIN_CHAT_ACCESS,
+                    "enable_google_drive_integration": app.state.config.ENABLE_GOOGLE_DRIVE_INTEGRATION,
                 }
                 if user is not None
                 else {}
             ),
         },
-        "google_drive": {
-            "client_id": GOOGLE_DRIVE_CLIENT_ID.value,
-            "api_key": GOOGLE_DRIVE_API_KEY.value,
-        },
         **(
             {
                 "default_models": app.state.config.DEFAULT_MODELS,
                 "default_prompt_suggestions": app.state.config.DEFAULT_PROMPT_SUGGESTIONS,
+                "code": {
+                    "engine": app.state.config.CODE_EXECUTION_ENGINE,
+                },
                 "audio": {
                     "tts": {
                         "engine": app.state.config.TTS_ENGINE,
@@ -996,6 +1173,10 @@ async def get_app_config(request: Request):
                     "max_count": app.state.config.FILE_MAX_COUNT,
                 },
                 "permissions": {**app.state.config.USER_PERMISSIONS},
+                "google_drive": {
+                    "client_id": GOOGLE_DRIVE_CLIENT_ID.value,
+                    "api_key": GOOGLE_DRIVE_API_KEY.value,
+                },
             }
             if user is not None
             else {}
@@ -1029,8 +1210,26 @@ async def get_app_version():
 
 
 @app.get("/api/version/updates")
-async def get_app_latest_release_version():
-    return {"current": VERSION, "latest": VERSION}
+async def get_app_latest_release_version(user=Depends(get_verified_user)):
+    if OFFLINE_MODE:
+        log.debug(
+            f"Offline mode is enabled, returning current version as latest version"
+        )
+        return {"current": VERSION, "latest": VERSION}
+    try:
+        timeout = aiohttp.ClientTimeout(total=1)
+        async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
+            async with session.get(
+                "https://api.github.com/repos/open-webui/open-webui/releases/latest"
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                latest_version = data["tag_name"]
+
+                return {"current": VERSION, "latest": latest_version[1:]}
+    except Exception as e:
+        log.debug(e)
+        return {"current": VERSION, "latest": VERSION}
 
 
 @app.get("/api/changelog")
@@ -1055,7 +1254,7 @@ if len(OAUTH_PROVIDERS) > 0:
 
 @app.get("/oauth/{provider}/login")
 async def oauth_login(provider: str, request: Request):
-    return await oauth_manager.handle_login(provider, request)
+    return await oauth_manager.handle_login(request, provider)
 
 
 # OAuth login logic is as follows:
@@ -1066,14 +1265,14 @@ async def oauth_login(provider: str, request: Request):
 #    - Email addresses are considered unique, so we fail registration if the email address is already taken
 @app.get("/oauth/{provider}/callback")
 async def oauth_callback(provider: str, request: Request, response: Response):
-    return await oauth_manager.handle_callback(provider, request, response)
+    return await oauth_manager.handle_callback(request, provider, response)
 
 
 @app.get("/manifest.json")
 async def get_manifest_json():
     return {
-        "name": WEBUI_NAME,
-        "short_name": WEBUI_NAME,
+        "name": app.state.WEBUI_NAME,
+        "short_name": app.state.WEBUI_NAME,
         "description": "Open WebUI is an open, extensible, user-friendly interface for AI that adapts to your workflow.",
         "start_url": "/",
         "display": "standalone",
@@ -1100,8 +1299,8 @@ async def get_manifest_json():
 async def get_opensearch_xml():
     xml_content = rf"""
     <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/" xmlns:moz="http://www.mozilla.org/2006/browser/search/">
-    <ShortName>{WEBUI_NAME}</ShortName>
-    <Description>Search {WEBUI_NAME}</Description>
+    <ShortName>{app.state.WEBUI_NAME}</ShortName>
+    <Description>Search {app.state.WEBUI_NAME}</Description>
     <InputEncoding>UTF-8</InputEncoding>
     <Image width="16" height="16" type="image/x-icon">{app.state.config.WEBUI_URL}/static/favicon.png</Image>
     <Url type="text/html" method="get" template="{app.state.config.WEBUI_URL}/?q={"{searchTerms}"}"/>
