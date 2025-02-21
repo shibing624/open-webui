@@ -6,9 +6,9 @@ import hmac
 import hashlib
 import requests
 import os
+import sys
 
-
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Optional, Union, List, Dict
 
 from open_webui.models.users import Users
@@ -20,11 +20,17 @@ from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 
-logging.getLogger("passlib").setLevel(logging.ERROR)
+if sys.version_info >= (3, 11):
+    from datetime import UTC
+else:
+    from datetime import timezone
+    UTC = timezone.utc
 
+logging.getLogger("passlib").setLevel(logging.ERROR)
 
 SESSION_SECRET = WEBUI_SECRET_KEY
 ALGORITHM = "HS256"
+
 
 ##############
 # Auth Utils
@@ -124,7 +130,7 @@ def decode_token(token: str) -> Optional[dict]:
 
 
 def extract_token_from_auth_header(auth_header: str):
-    return auth_header[len("Bearer ") :]
+    return auth_header[len("Bearer "):]
 
 
 def create_api_key():
@@ -141,8 +147,8 @@ def get_http_authorization_cred(auth_header: str):
 
 
 def get_current_user(
-    request: Request,
-    auth_token: HTTPAuthorizationCredentials = Depends(bearer_security),
+        request: Request,
+        auth_token: HTTPAuthorizationCredentials = Depends(bearer_security),
 ):
     token = None
 
