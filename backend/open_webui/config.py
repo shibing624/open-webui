@@ -110,10 +110,10 @@ DEFAULT_CONFIG = {
         "prompt_suggestions": [
             {
                 "title": [
-                    "Help me study",
-                    "vocabulary for a college entrance exam",
+                    "介绍北京",
+                    "一句话介绍北京",
                 ],
-                "content": "Help me study vocabulary: write a sentence for me to fill in the blank, and I'll try to pick the correct option.",
+                "content": "一句话介绍北京",
             },
             {
                 "title": [
