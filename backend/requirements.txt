@@ -92,6 +92,10 @@ extract_msg
 pydub
 duckduckgo-search~=7.3.2
 
+# google
+google-cloud-core
+google-cloud-storage
+
 ## Google Drive
 #google-api-python-client
 #google-auth-httplib2
